@@ -3,8 +3,8 @@ from torch import nn
 
 import numpy as np
 
-text = ['hey how are you','good i am fine','have a nice day']
-
+# text = ['hey how are you','good i am fine','A simple loop that','list of sentences','Creating another dictionary','Join all the sentences together']
+text = ['hey how','good i','A simple','list','Creating an','Join all']
 # Join all the sentences together and extract the unique characters from the combined sentences
 chars = set(''.join(text))
 
@@ -37,10 +37,17 @@ for i in range(len(text)):
     target_seq.append(text[i][1:])
     print("Input Sequence: {}\nTarget Sequence: {}".format(input_seq[i], target_seq[i]))
 
-dict_size = len(char2int)
-seq_len = maxlen - 1
-batch_size = len(text)
+#  convert our input and target sequences to sequences of integers using the dictionaries we created above.
+#  This will allow us to one-hot-encode our input sequence subsequently.
+for i in range(len(text)):
+    input_seq[i] = [char2int[character] for character in input_seq[i]]
+    target_seq[i] = [char2int[character] for character in target_seq[i]]
 
+
+dict_size = len(char2int)
+seq_len = maxlen - 1  # 这里要减去1，想想前面我们是怎么由原始text 获得用来训练的input_seq和target_seq的
+batch_size = len(text)
+# batch_size = 6
 
 def one_hot_encode(sequence, dict_size, seq_len, batch_size):
     # Creating a multi-dimensional array of zeros with the desired output shape
@@ -61,16 +68,17 @@ input_seq = torch.from_numpy(input_seq)
 target_seq = torch.Tensor(target_seq)
 
 
-# torch.cuda.is_available() checks and returns a Boolean True if a GPU is available, else it'll return False
-is_cuda = torch.cuda.is_available()
-
-# If we have a GPU available, we'll set our device to GPU. We'll use this device variable later in our code.
-if is_cuda:
-    device = torch.device("cuda")
-    print("GPU is available")
-else:
-    device = torch.device("cpu")
-    print("GPU not available, CPU used")
+# # torch.cuda.is_available() checks and returns a Boolean True if a GPU is available, else it'll return False
+# is_cuda = torch.cuda.is_available()
+#
+# # If we have a GPU available, we'll set our device to GPU. We'll use this device variable later in our code.
+# if is_cuda:
+#     device = torch.device("cuda")
+#     print("GPU is available")
+# else:
+#     device = torch.device("cpu")
+#     print("GPU not available, CPU used")
+cuda0 = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
 class Model(nn.Module):
@@ -83,7 +91,8 @@ class Model(nn.Module):
 
         # Defining the layers
         # RNN Layer
-        self.rnn = nn.RNN(input_size, hidden_dim, n_layers, batch_first=True)
+        self.rnn = nn.RNN(input_size, hidden_dim, n_layers, batch_first=True)  #batch_first – If True, then the input and output tensors are provided as
+                                                                                # (batch, seq, feature). Default: False
         # Fully connected layer
         self.fc = nn.Linear(hidden_dim, output_size)
 
@@ -105,14 +114,14 @@ class Model(nn.Module):
     def init_hidden(self, batch_size):
         # This method generates the first hidden state of zeros which we'll use in the forward pass
         # We'll send the tensor holding the hidden state to the device we specified earlier as well
-        hidden = torch.zeros(self.n_layers, batch_size, self.hidden_dim)
+        hidden = torch.zeros(self.n_layers, batch_size, self.hidden_dim).cuda()
         return hidden
 
 
 # Instantiate the model with hyperparameters
 model = Model(input_size=dict_size, output_size=dict_size, hidden_dim=12, n_layers=1)
 # We'll also set the model to the device that we defined earlier (default is CPU)
-model.to(device)
+model.to(cuda0)
 
 # Define hyperparameters
 n_epochs = 100
@@ -122,10 +131,12 @@ lr=0.01
 criterion = nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
+input_seq.to(cuda0)
+
 # Training Run
 for epoch in range(1, n_epochs + 1):
     optimizer.zero_grad()  # Clears existing gradients from previous epoch
-    input_seq.to(device)
+    input_seq=input_seq.cuda()
     output, hidden = model(input_seq)
     loss = criterion(output, target_seq.view(-1).long())
     loss.backward()  # Does backpropagation and calculates gradients
@@ -142,7 +153,7 @@ def predict(model, character):
     character = np.array([[char2int[c] for c in character]])
     character = one_hot_encode(character, dict_size, character.shape[1], 1)
     character = torch.from_numpy(character)
-    character.to(device)
+    character.to(cuda0)
 
     out, hidden = model(character)
 
